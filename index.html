@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Circle of Fifths Chord Navigator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 min-h-screen p-4">
+<div class="max-w-4xl mx-auto">
+  <h1 class="text-2xl font-bold text-center text-white mb-1">五度圏 コード ナビゲーター</h1>
+  <p class="text-center text-gray-400 text-sm mb-4">キーをクリックしてダイアトニックコードを確認</p>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+    <!-- SVG Circle -->
+    <div class="flex justify-center">
+      <div class="relative">
+        <div class="flex gap-3 justify-center mb-3">
+          <button id="modeBtn" class="bg-indigo-600 text-white px-4 py-1 rounded text-sm font-medium hover:bg-indigo-700" aria-label="モード切替">長調 / 短調 切替</button>
+          <span id="modeLabel" class="text-white text-sm self-center font-medium bg-gray-700 px-3 py-1 rounded">長調 (Major)</span>
+        </div>
+        <svg id="cof" width="380" height="380" viewBox="0 0 380 380" class="cursor-pointer"></svg>
+      </div>
+    </div>
+
+    <!-- Chord display -->
+    <div class="bg-gray-800 rounded-xl p-5 text-white min-h-64">
+      <div id="chordPanel">
+        <p class="text-gray-400">← キーをクリックしてください</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MAJOR_KEYS = ['C','G','D','A','E','B','F#/Gb','Db','Ab','Eb','Bb','F'];
+const MINOR_KEYS = ['Am','Em','Bm','F#m','C#m','G#m','D#m/Ebm','Bbm','Fm','Cm','Gm','Dm'];
+
+// Diatonic chord formulas for Major: I ii iii IV V vi viidim
+// Chord notes: root positions (semitones from C)
+const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const ENHARMONIC = {'C#':'Db','D#':'Eb','F#':'Gb','G#':'Ab','A#':'Bb'};
+
+function getNote(idx) {
+  const n = NOTES[((idx % 12) + 12) % 12];
+  return n;
+}
+
+function noteName(idx) {
+  return getNote(idx);
+}
+
+// Major scale intervals: W W H W W W H → 0 2 4 5 7 9 11
+const MAJOR_INTERVALS = [0, 2, 4, 5, 7, 9, 11];
+const MINOR_INTERVALS = [0, 2, 3, 5, 7, 8, 10];
+
+// Chord quality in major: Maj min min Maj Maj min dim
+const MAJOR_QUALITIES = ['', 'm', 'm', '', '', 'm', 'dim'];
+const MAJOR_DEGREES   = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+const MINOR_QUALITIES = ['m', 'dim', '', 'm', 'm', '', ''];
+const MINOR_DEGREES   = ['i', 'ii°', 'III', 'iv', 'v', 'VI', 'VII'];
+
+// Chord notes
+const CHORD_INTERVALS = { '': [0,4,7], 'm': [0,3,7], 'dim': [0,3,6] };
+
+let isMinor = false;
+let selectedKey = null;
+
+const MAJOR_ROOT_SEMITONES = [0,7,2,9,4,11,6,1,8,3,10,5]; // C G D A E B F#/Gb Db Ab Eb Bb F
+const MINOR_ROOT_SEMITONES = [9,4,11,6,1,8,3,10,5,0,7,2]; // Am Em Bm...
+
+function buildChords(rootSemitone, minor) {
+  const intervals = minor ? MINOR_INTERVALS : MAJOR_INTERVALS;
+  const qualities = minor ? MINOR_QUALITIES : MAJOR_QUALITIES;
+  const degrees = minor ? MINOR_DEGREES : MAJOR_DEGREES;
+  return intervals.map((interval, i) => {
+    const chordRoot = (rootSemitone + interval) % 12;
+    const q = qualities[i];
+    const chordNotes = CHORD_INTERVALS[q].map(n => noteName((chordRoot + n) % 12));
+    return { degree: degrees[i], name: noteName(chordRoot) + q, notes: chordNotes };
+  });
+}
+
+function drawCircle() {
+  const svg = document.getElementById('cof');
+  svg.innerHTML = '';
+  const cx = 190, cy = 190;
+  const outerR = 175, midR = 130, innerR = 85;
+
+  const keys = isMinor ? MINOR_KEYS : MAJOR_KEYS;
+  const otherKeys = isMinor ? MAJOR_KEYS : MINOR_KEYS;
+  const rootSemis = isMinor ? MINOR_ROOT_SEMITONES : MAJOR_ROOT_SEMITONES;
+  const otherRootSemis = isMinor ? MAJOR_ROOT_SEMITONES : MINOR_ROOT_SEMITONES;
+
+  const majorColors = ['#4f46e5','#7c3aed','#9333ea','#c026d3','#db2777','#e11d48','#dc2626','#ea580c','#d97706','#65a30d','#16a34a','#0891b2'];
+  const minorColors = ['#818cf8','#a78bfa','#c084fc','#e879f9','#f472b6','#fb7185','#f87171','#fb923c','#fbbf24','#a3e635','#4ade80','#38bdf8'];
+
+  for (let i = 0; i < 12; i++) {
+    const angle = (i * 30 - 90) * Math.PI / 180;
+    const nextAngle = ((i + 1) * 30 - 90) * Math.PI / 180;
+    const midAngle = ((i * 30 + 15) - 90) * Math.PI / 180;
+
+    const colorArr = isMinor ? minorColors : majorColors;
+    const otherColorArr = isMinor ? majorColors : minorColors;
+
+    // Outer segment (main mode)
+    const x1 = cx + outerR * Math.cos(angle);
+    const y1 = cy + outerR * Math.sin(angle);
+    const x2 = cx + outerR * Math.cos(nextAngle);
+    const y2 = cy + outerR * Math.sin(nextAngle);
+    const x3 = cx + midR * Math.cos(nextAngle);
+    const y3 = cy + midR * Math.sin(nextAngle);
+    const x4 = cx + midR * Math.cos(angle);
+    const y4 = cy + midR * Math.sin(angle);
+
+    const seg = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const d = `M${x1},${y1} A${outerR},${outerR} 0 0,1 ${x2},${y2} L${x3},${y3} A${midR},${midR} 0 0,0 ${x4},${y4} Z`;
+    seg.setAttribute('d', d);
+    seg.setAttribute('fill', selectedKey === i ? '#fbbf24' : colorArr[i]);
+    seg.setAttribute('stroke', '#1f2937');
+    seg.setAttribute('stroke-width', '1.5');
+    seg.style.cursor = 'pointer';
+    seg.addEventListener('click', () => selectKey(i));
+    svg.appendChild(seg);
+
+    // Label
+    const lx = cx + (outerR + midR) / 2 * Math.cos(midAngle);
+    const ly = cy + (outerR + midR) / 2 * Math.sin(midAngle);
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', lx);
+    text.setAttribute('y', ly + 5);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('fill', selectedKey === i ? '#1f2937' : 'white');
+    text.setAttribute('font-size', '13');
+    text.setAttribute('font-weight', 'bold');
+    text.setAttribute('pointer-events', 'none');
+    text.textContent = keys[i];
+    svg.appendChild(text);
+
+    // Inner segment (parallel)
+    const ix1 = cx + midR * Math.cos(angle);
+    const iy1 = cy + midR * Math.sin(angle);
+    const ix2 = cx + midR * Math.cos(nextAngle);
+    const iy2 = cy + midR * Math.sin(nextAngle);
+    const ix3 = cx + innerR * Math.cos(nextAngle);
+    const iy3 = cy + innerR * Math.sin(nextAngle);
+    const ix4 = cx + innerR * Math.cos(angle);
+    const iy4 = cy + innerR * Math.sin(angle);
+
+    const innerSeg = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const id2 = `M${ix1},${iy1} A${midR},${midR} 0 0,1 ${ix2},${iy2} L${ix3},${iy3} A${innerR},${innerR} 0 0,0 ${ix4},${iy4} Z`;
+    innerSeg.setAttribute('d', id2);
+    innerSeg.setAttribute('fill', otherColorArr[i] + 'bb');
+    innerSeg.setAttribute('stroke', '#1f2937');
+    innerSeg.setAttribute('stroke-width', '1');
+    svg.appendChild(innerSeg);
+
+    const itext = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    const ilx = cx + (midR + innerR) / 2 * Math.cos(midAngle);
+    const ily = cy + (midR + innerR) / 2 * Math.sin(midAngle);
+    itext.setAttribute('x', ilx);
+    itext.setAttribute('y', ily + 4);
+    itext.setAttribute('text-anchor', 'middle');
+    itext.setAttribute('fill', 'white');
+    itext.setAttribute('font-size', '10');
+    itext.setAttribute('pointer-events', 'none');
+    itext.textContent = otherKeys[i];
+    svg.appendChild(itext);
+  }
+
+  // Center circle
+  const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  circle.setAttribute('cx', cx); circle.setAttribute('cy', cy); circle.setAttribute('r', innerR - 2);
+  circle.setAttribute('fill', '#1f2937'); circle.setAttribute('stroke', '#374151'); circle.setAttribute('stroke-width', '2');
+  svg.appendChild(circle);
+  const centerText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  centerText.setAttribute('x', cx); centerText.setAttribute('y', cy - 8);
+  centerText.setAttribute('text-anchor', 'middle'); centerText.setAttribute('fill', '#9ca3af');
+  centerText.setAttribute('font-size', '11');
+  centerText.textContent = isMinor ? '並行長調 (外)' : '並行短調 (内)';
+  svg.appendChild(centerText);
+  const centerText2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  centerText2.setAttribute('x', cx); centerText2.setAttribute('y', cy + 10);
+  centerText2.setAttribute('text-anchor', 'middle'); centerText2.setAttribute('fill', '#6b7280');
+  centerText2.setAttribute('font-size', '10');
+  centerText2.textContent = '五度圏';
+  svg.appendChild(centerText2);
+}
+
+function selectKey(i) {
+  selectedKey = i;
+  drawCircle();
+
+  const keys = isMinor ? MINOR_KEYS : MAJOR_KEYS;
+  const rootSemis = isMinor ? MINOR_ROOT_SEMITONES : MAJOR_ROOT_SEMITONES;
+  const chords = buildChords(rootSemis[i], isMinor);
+  const keyName = keys[i];
+
+  const degLabels = ['I','II','III','IV','V','VI','VII'];
+  let html = `<h2 class="text-xl font-bold text-yellow-400 mb-3">${keyName} ${isMinor ? '(Minor)' : '(Major)'} ダイアトニックコード</h2>`;
+  html += '<div class="space-y-2">';
+  chords.forEach((c, idx) => {
+    html += `<div class="flex items-center gap-3 bg-gray-700 rounded px-3 py-2">
+      <span class="text-gray-400 text-xs w-8">${c.degree}</span>
+      <span class="font-bold text-white w-16">${c.name}</span>
+      <span class="text-gray-300 text-sm">${c.notes.join(' - ')}</span>
+    </div>`;
+  });
+  html += '</div>';
+  document.getElementById('chordPanel').innerHTML = html;
+}
+
+document.getElementById('modeBtn').addEventListener('click', () => {
+  isMinor = !isMinor;
+  selectedKey = null;
+  document.getElementById('modeLabel').textContent = isMinor ? '短調 (Minor)' : '長調 (Major)';
+  document.getElementById('chordPanel').innerHTML = '<p class="text-gray-400">← キーをクリックしてください</p>';
+  drawCircle();
+});
+
+drawCircle();
+</script>
+</body>
+</html>
